@@ -1,0 +1,56 @@
+version: 2
+jobs:
+  deploy:
+    working_directory: ~/modacta-mercuryapi
+    docker:
+      - image: koombea/circleci:0.11.11
+        environment:
+          ENVIRONMENT: staging
+    steps:
+      - checkout
+      - setup_remote_docker
+      - run:
+          name: Building Docker image for release
+          command: |
+            #Environment vars
+            aws s3 sync s3://modacta-mercuryapi-env-vars ${HOME}/env-vars
+            if [[ "${CIRCLE_BRANCH//[\/-]/_}" == "master" ]]; then
+              source ${HOME}/env-vars/env.production
+              ENVIRONMENT="production"
+            fi
+
+            CACHE=${CIRCLE_BRANCH//\//_}
+
+            $(aws ecr get-login --no-include-email --region ${AWS_DEFAULT_REGION})
+
+            if ! docker pull ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_} ; then
+              echo "No previous image with tag ${CIRCLE_BRANCH//\//_}... using tag develop for cache."
+              docker build --cache-from=${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CACHE} \
+              -t ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_}_${CIRCLE_BUILD_NUM} \
+              .
+            else
+              echo "No previous image with tag ${CIRCLE_BRANCH//\//_}... using tag develop for cache."
+              docker build -t ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_}_${CIRCLE_BUILD_NUM} \
+              .
+            fi
+
+            docker tag ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_}_${CIRCLE_BUILD_NUM} ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_}
+            docker push ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_}_${CIRCLE_BUILD_NUM}
+            docker push ${DOCKER_REGISTRY}/${PROJECT}-${ENVIRONMENT}:${CIRCLE_BRANCH//\//_}
+
+            echo "Branch: ${CIRCLE_BRANCH}"
+            if [[ "${CIRCLE_BRANCH}" == "master" ]]; then
+              echo "Deploying to production..."
+            fi
+            DOCKER_IMAGE_TAG=${CIRCLE_BRANCH//\//_}_${CIRCLE_BUILD_NUM} deploy/deploy.sh
+
+workflows:
+  version: 2
+
+  modacta_mercuryapi_core_wf:
+    jobs:
+      - deploy:
+          filters:
+            branches:
+              only:
+                - master
