@@ -8,12 +8,6 @@ This repo provides a dockerized drop-in replacement for the [Mercury Parser](htt
 
 ## Deploy
 
-### Pull And Run
-
-```bash
-docker run -p 3000:3000 -d wangqiru/mercury-parser-api
-```
-
 ### Build Your Own
 
 ```bash
